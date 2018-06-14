@@ -12,6 +12,7 @@ SCHEMA_TABLE="shmig_version"
 CONFIG_EXPLICITLY_SET="0"
 ASK_PASSWORD="0"
 MIGRATIONS="./migrations"
+TIMESTAMP_FORMAT="%s"
 
 MYSQL=`which mysql`
 PSQL=`which psql`
@@ -107,6 +108,10 @@ Where options are:
   -s TABLE
       name of schema table (default is $SCHEMA_TABLE)
 
+  -T TIMESTAMP_FORMAT
+      the format of the timestamp in migration names (should be compatible with gnu \`date\`).
+      Default: %s (unix timestamp)
+
   -a ARGS
       additional arguments for database client passed as is
 
@@ -196,11 +201,11 @@ __generic_previous_versions(){
 }
 
 __generic_bump_version_sql(){
-  echo "insert into $1$SCHEMA_TABLE$1(version) values($2);"
+  echo "insert into $1$SCHEMA_TABLE$1(version) values('$2');"
 }
 
 __generic_drop_version_sql(){
-  echo "delete from $1$SCHEMA_TABLE$1 where version = $2;"
+  echo "delete from $1$SCHEMA_TABLE$1 where version = '$2';"
 }
 
 __generic_status(){
@@ -229,11 +234,11 @@ mysql_cli(){
 
 mysql_check(){
   __generic_checker "$MYSQL" "show tables;" \
-    "create table \`$SCHEMA_TABLE\`(version int not null primary key, migrated_at timestamp not null default current_timestamp);"
+    "create table \`$SCHEMA_TABLE\`(version varchar(32) not null primary key, migrated_at timestamp not null default current_timestamp);"
 }
 
 mysql_previous_versions(){
-  local fields="lpad(version, 10, '0') as version"
+  local fields="version"
   __generic_previous_versions '`' "$1" "$fields"
 }
 
@@ -290,11 +295,11 @@ postgresql_cli(){
 postgresql_check(){
   __generic_checker "$PSQL" \
     "select table_name from information_schema.tables where table_schema = 'public';" \
-    "create table \"$SCHEMA_TABLE\"(version int not null primary key, migrated_at timestamp not null default (now() at time zone 'utc'));"
+    "create table \"$SCHEMA_TABLE\"(version varchar(32) not null primary key, migrated_at timestamp not null default (now() at time zone 'utc'));"
 }
 
 postgresql_previous_versions(){
-   local fields="to_char(version,'0000000000') as version"
+   local fields="version"
    __generic_previous_versions '"' "$1" "$fields"
 }
 
@@ -345,11 +350,11 @@ sqlite3_cli(){
 sqlite3_check(){
   __generic_checker "$SQLITE3" \
     "select name from sqlite_master where type = 'table';" \
-    "create table \`$SCHEMA_TABLE\`(version int not null primary key, migrated_at timestamp not null default (datetime(current_timestamp)));"
+    "create table \`$SCHEMA_TABLE\`(version text not null primary key, migrated_at timestamp not null default (datetime(current_timestamp)));"
 }
 
 sqlite3_previous_versions(){
-  local fields="substr('0000000000' || version, -10, 10) as version"
+  local fields="version"
   __generic_previous_versions '`' "$1" "$fields"
 }
 
@@ -449,11 +454,11 @@ create(){
   echo "$name" | grep -E -qi '^[a-z0-9_. -]+$' || die "${LRED}invalid migration name:${CLEAR} $name. Name must match ^[a-z0-9_. -]+$."
 
   # As of 4/28/2014, seconds since epoch has ten digits.
-  find_migrations -name "*[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-$name.sql" \
+  find_migrations -regex ".*/[0-9:._]+-$name.sql" \
     | grep -q "\-$name\.sql" \
     && die "${LRED}migration '${LYELLOW}$name${LRED}' already exists${CLEAR}"
 
-  local fname="$MIGRATIONS/$(date +%s)-$(echo "$name" | tr \  _).sql"
+  local fname="$MIGRATIONS/$(date +"$TIMESTAMP_FORMAT")-$(echo "$name" | tr \  _).sql"
 
   cat > "$fname" << EOF
 -- Migration: $name
@@ -486,7 +491,7 @@ pending_migrations(){
   last="${last:-0}"
 
   find_migrations | sort -t- -k1nr | awk -v "limit=${1:--1}" -v "last=$last" -F/ \
-    'limit&&$NF~/^[0-9]+-.*\.sql$/&&int($NF)>last{
+    'limit&&$NF~/^[0-9:._]+-.*\.sql$/&&int($NF)>last{
       print;
       --limit;
       if(!limit)
@@ -570,8 +575,8 @@ migrate(){
     shift
   done
 
-  is_numeric "$steps" || die "${LYELLOW}STEPS${LRED} should be numeric${CLEAR}"
-  is_numeric "$stopver" || die "${LYELLOW}TILL${LRED} should be numeric${CLEAR}"
+  #is_numeric "$steps" || die "${LYELLOW}STEPS${LRED} should be numeric${CLEAR}"
+  #is_numeric "$stopver" || die "${LYELLOW}TILL${LRED} should be numeric${CLEAR}"
 
   local fname=""
   while read fname
@@ -583,8 +588,8 @@ migrate(){
     if [[ -n $stopver ]]
     then
       case "$me" in
-          up) (( version > stopver )) && break ;;
-        down) (( version < stopver )) && break ;;
+          up) [[ "$version" > "$stopver" ]] && break ;;
+        down) [[ "$version" < "$stopver" ]] && break ;;
       esac
     fi
 
@@ -617,25 +622,26 @@ down(){
 # parse command line and store variables in _VAR to overwrite config values
 # later
 
-while getopts hc:t:m:d:l:H:p:P:s:a:AVC: arg
+while getopts hc:t:m:d:l:H:p:P:s:T:a:AVC: arg
 do
   case $arg in
-    h)   usage 0                   ;;
+    h)   usage 0                     ;;
     c)   CONFIG_EXPLICITLY_SET="1"
-         CONFIG="$OPTARG"          ;;
-    t)   _TYPE="$OPTARG"           ;;
-    m)   _MIGRATIONS="$OPTARG"     ;;
-    d)   _DATABASE="$OPTARG"       ;;
-    l)   _LOGIN="$OPTARG"          ;;
-    H)   _HOST="$OPTARG"           ;;
-    p)   _PASSWORD="$OPTARG"       ;;
-    P)   _PORT="$OPTARG"           ;;
-    s)   _SCHEMA_TABLE="$OPTARG"   ;;
-    a)   _ARGS="$OPTARG"           ;;
-    V)   version                   ;;
-    A)   ASK_PASSWORD="1"          ;;
-    C)   _COLOR="$OPTARG"          ;;
-    ?)   exit 1                    ;;
+         CONFIG="$OPTARG"            ;;
+    t)   _TYPE="$OPTARG"             ;;
+    m)   _MIGRATIONS="$OPTARG"       ;;
+    d)   _DATABASE="$OPTARG"         ;;
+    l)   _LOGIN="$OPTARG"            ;;
+    H)   _HOST="$OPTARG"             ;;
+    p)   _PASSWORD="$OPTARG"         ;;
+    P)   _PORT="$OPTARG"             ;;
+    s)   _SCHEMA_TABLE="$OPTARG"     ;;
+    T)   _TIMESTAMP_FORMAT="$OPTARG" ;;
+    a)   _ARGS="$OPTARG"             ;;
+    V)   version                     ;;
+    A)   ASK_PASSWORD="1"            ;;
+    C)   _COLOR="$OPTARG"            ;;
+    ?)   exit 1                      ;;
   esac
 done
 shift $(($OPTIND - 1))
@@ -668,6 +674,7 @@ fi
 [[ -n $_PASSWORD     ]] && PASSWORD="$_PASSWORD"
 [[ -n $_PORT         ]] && PORT="$_PORT"
 [[ -n $_SCHEMA_TABLE ]] && SCHEMA_TABLE="$_SCHEMA_TABLE"
+[[ -n $_TIMESTAMP_FORMAT ]] && TIMESTAMP_FORMAT="$_TIMESTAMP_FORMAT"
 [[ -n $_ARGS         ]] && ARGS="$_ARGS"
 [[ -n $_COLOR        ]] && COLOR="$_COLOR"
 
@@ -714,6 +721,9 @@ fi
 [[ -z $TYPE       ]] && die "${BOLD}${LYELLOW}database type${CLEAR} ${RED}required${CLEAR}"
 [[ -z $DATABASE   ]] && die "${BOLD}${LYELLOW}database name${CLEAR} ${RED}required${CLEAR}"
 [[ -d $MIGRATIONS ]] || die "${BOLD}${LYELLOW}the migrations directory ($MIGRATIONS)${CLEAR} ${RED}is not a directory${CLEAR}"
+date +"$TIMESTAMP_FORMAT" | egrep -q '^[0-9:._]+$' || die "${BOLD}${LYELLOW}timestamp format${CLEAR} ${RED}may only result in " \
+    "timestamps with numbers, and characters ':', '.', and '_'.\n       (shmig uses the hyphen character as a delimiter.)${CLEAR}"
+
 
 [[ $# -eq 0 ]] && die "${BOLD}${LYELLOW}action${CLEAR} ${RED}required${CLEAR}"
 ACTION="$1"
