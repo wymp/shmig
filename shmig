@@ -502,7 +502,7 @@ pending_migrations(){
   # Sort one-liner from this SE answer: https://unix.stackexchange.com/a/394166/41735
   find_migrations | \
     sed 's|\(.*\)/|\1'$'\4''|' | \
-    sort -t$'\4' -k+2n | \
+    sort -t$'\4' -k+2d | \
     sed 's|'$'\4''|/|' | \
     awk -v "limit=${1:--1}" -v "last=$last" -F/ \
     'limit&&$NF~/^[0-9:._]+-.*\.sql$/&&int($NF)>last{
