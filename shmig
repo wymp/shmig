@@ -590,7 +590,7 @@ migrate(){
   done
 
   is_numeric "$steps" || die "${LYELLOW}STEPS${LRED} should be numeric${CLEAR}"
-  echo "$stopver" | egrep -q '^[0-9:._]+$' || die "${LYELLOW}TILL${LRED} should be a version specification ([0-9:._]+)${CLEAR}"
+  [ -n "$stopver" ] && (echo "$stopver" | egrep -q '^[0-9:._]+$' || die "${LYELLOW}TILL${LRED} should be a version specification ([0-9:._]+)${CLEAR}")
 
   local fname=""
   while read fname
