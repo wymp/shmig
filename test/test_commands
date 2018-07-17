@@ -1,8 +1,12 @@
+show
 up steps=1
+show
 status
 rollback
+show
 pending
 migrate
 down till=1485648520
 status
 pending
+show

@@ -58,7 +58,7 @@ Common options:
   -d <database name>
   -t [mysql|postgresql|sqlite3]
   -h
-and action is one of create, up, down, rollback, status, redo, and pending.
+and action is one of create, up, down, rollback, status, show, redo, and pending.
 
 EOF
   [[ $# -gt 0 ]] && warn "$@"
@@ -152,6 +152,10 @@ Actions are:
 
   status
       show which migrations were applied and at which time in UTC
+
+  show
+      show all migrations in the selected migrations directory, regardless
+      of whether or not they've been applied
 
 EOF
 
@@ -497,17 +501,13 @@ pending_migrations(){
   local mig
 
   while read -r -d $'\n' mig; do
-      # Break if we've hit the limit
-      [ "$limit" -eq 0 ] && break
-      # Continue if this isn't a migration file or it's less than or equal to the last migration run
-      ( (! echo "$(basename "$mig")" | egrep -q "^[0-9]+-.+\\.sql$") || [[ ! "$(basename "$mig" | sed -r 's/^([^-]+).*$/\1/')" > "$last" ]]) && continue
-      echo "$mig"
-      !((limit--))
-  # Sort one-liner from this SE answer: https://unix.stackexchange.com/a/394166/41735
-  done < <(find_migrations | \
-    sed 's|\(.*\)/|\1'$'\4''|' | \
-    sort -t$'\4' -k+2d | \
-    sed 's|'$'\4''|/|')
+    # Break if we've hit the limit
+    [ "$limit" -eq 0 ] && break
+    # Continue if it's less than or equal to the last migration run
+    [[ ! "$(basename "$mig" | sed -r 's/^([^-]+).*$/\1/')" > "$last" ]] && continue
+    echo "$mig"
+    !((limit--))
+  done < <(_show_raw)
 }
 
 # prints N previous migration file names.
@@ -542,6 +542,22 @@ pending(){
 status(){
   echo "Applied migrations:"
   "${TYPE}_status"
+}
+
+# Get list of all migrations in the current migrations directory, ordered by version asc
+# Sort one-liner from this SE answer: https://unix.stackexchange.com/a/394166/41735
+_show_raw(){
+  find_migrations | \
+    egrep "^.*/[0-9]+-.+\\.sql$" | \
+    sed 's|\(.*\)/|\1'$'\4''|' | \
+    sort -t$'\4' -k+2d | \
+    sed 's|'$'\4''|/|'
+}
+
+show(){
+  while read -r -d $'\n' mig; do
+    echo "$(basename "$mig")"
+  done < <(_show_raw)
 }
 
 # checks if given argument is numeric or empty
@@ -781,6 +797,9 @@ case "$ACTION" in
     ;;
   status)
     status "$@"
+    ;;
+  show)
+    show "$@"
     ;;
   *)
     die "${LRED}unknown action:${CLEAR} $ACTION"
