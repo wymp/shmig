@@ -493,19 +493,21 @@ ${TYPE}_down_text $fname
 pending_migrations(){
   local last=$("${TYPE}_previous_versions" 1)
   last="${last:-0}"
+  local limit="${1:--1}"
+  local mig
 
+  while read -r -d $'\n' mig; do
+      # Break if we've hit the limit
+      [ "$limit" -eq 0 ] && break
+      # Continue if this isn't a migration file or it's less than or equal to the last migration run
+      ( (! echo "$(basename "$mig")" | egrep -q "^[0-9]+-.+\\.sql$") || [[ ! "$(basename "$mig" | sed -r 's/^([^-]+).*$/\1/')" > "$last" ]]) && continue
+      echo "$mig"
+      !((limit--))
   # Sort one-liner from this SE answer: https://unix.stackexchange.com/a/394166/41735
-  find_migrations | \
+  done < <(find_migrations | \
     sed 's|\(.*\)/|\1'$'\4''|' | \
     sort -t$'\4' -k+2d | \
-    sed 's|'$'\4''|/|' | \
-    awk -v "limit=${1:--1}" -v "last=$last" -F/ \
-    'limit&&$NF~/^[0-9]+-.*\.sql$/&&int($NF)>last{
-      print;
-      --limit;
-      if(!limit)
-        exit;
-    }'
+    sed 's|'$'\4''|/|')
 }
 
 # prints N previous migration file names.
