@@ -553,7 +553,7 @@ status(){
 # Sort one-liner from this SE answer: https://unix.stackexchange.com/a/394166/41735
 _show_raw(){
   find_migrations | \
-    egrep "^.*/[0-9]+-.+\\.sql$" | \
+    egrep "^.*/[0-9:._]+-.+\\.sql$" | \
     sed 's|\(.*\)/|\1'$'\4''|' | \
     sort -t$'\4' -k+2d | \
     sed 's|'$'\4''|/|'
