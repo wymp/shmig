@@ -505,7 +505,7 @@ pending_migrations(){
       # Break if we've hit the limit
       [ "$limit" -eq 0 ] && break
       # Continue if this isn't a migration file or it's less than or equal to the last migration run
-      ( (! echo "$(basename "$mig")" | egrep -q "^[0-9]+-.+\\.sql$") || [[ ! "$(basename "$mig" | sed -r 's/^([^-]+).*$/\1/')" > "$last" ]]) && continue
+      ( (! echo "$(basename "$mig")" | egrep -q "^[0-9:._]+-.+\\.sql$") || [[ ! "$(basename "$mig" | sed -r 's/^([^-]+).*$/\1/')" > "$last" ]]) && continue
       echo "$mig"
       !((limit--))
   # Sort one-liner from this SE answer: https://unix.stackexchange.com/a/394166/41735
