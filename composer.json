@@ -1,7 +1,7 @@
 {
     "name": "mbucc/shmig",
     "description": "A shell-based database migration utility",
-    "bin": "shmig",
+    "bin": ["shmig"],
     "authors": [
         {
             "name": "@mbucc and contributors",
